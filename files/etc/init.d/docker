@@ -1,0 +1,29 @@
+#!/bin/sh /etc/rc.common
+
+START=60
+STOP=20
+
+PIDFILE=/var/run/docker.pid
+EXEC="/usr/bin/dockerd"
+
+ensure_cgroup_mount() {
+  # Unmount /sys/fs/cgroup if mounted as cgroup
+  grep '/sys/fs/cgroup cgroup' /proc/mounts && umount /sys/fs/cgroup
+
+  mount -t tmpfs -o uid=0,gid=0,mode=0755 cgroup /sys/fs/cgroup
+  for sys in $(awk '!/^#/ { if ($4 == 1) print $1 }' /proc/cgroups); do
+	  mnt="/sys/fs/cgroup/$sys"
+    grep -q "cgroup $mnt " && continue
+	  mkdir -p "$mnt"
+	  mount -n -t cgroup -o $sys cgroup "$mnt"
+  done
+}
+
+start() {
+  start-stop-daemon -S -b -x "$EXEC" -p "$PIDFILE" \
+    -- --data-root $(uci_get docker.globals.root)
+}
+
+stop() {
+  start-stop-daemon -K -x "$EXEC" -p "$PIDFILE"
+}
