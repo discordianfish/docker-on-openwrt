@@ -1,0 +1,56 @@
+#!/bin/sh /etc/rc.common
+set -x
+START=99
+STOP=10
+
+args=''
+
+start() {
+  config_load containers
+  config_foreach start_container container
+}
+
+stop() {
+  config_load containers
+  config_foreach stop_container container
+}
+
+add_port() {
+  args="$args -p $1"
+}
+add_env() {
+  args="$args -e $1"
+}
+add_volume() {
+  args="$args -v $1"
+}
+
+
+start_container() {
+  local config="$1"
+  local hostname=$(uci -q get "containers.$config.hostname")
+  local name=$(uci -q get "containers.$config.name")
+  local user=$(uci -q get "containers.$config.user")
+  local status # using local status in if condition shadows return status
+  if status=$(docker inspect "$name" -f '{{.State.Status}}' 2>/dev/null); then
+    [ "$status" != "running" ] && docker start "$name"
+    return
+  fi
+
+  args=""
+  config_list_foreach "$config" port   add_port
+  config_list_foreach "$config" env    add_env
+  config_list_foreach "$config" volume add_volume
+
+  [ -n "$hostname" ] && args="$args -h $hostname"
+  [ -n "$user" ] && args="$args -u $user"
+
+  docker run -d --name "$name" \
+    $args \
+    "$(uci -q get "containers.$config.image")"
+}
+
+stop_container() {
+  local config="$1"
+  docker stop "$(uci -q get "containers.$config.name")"
+}
